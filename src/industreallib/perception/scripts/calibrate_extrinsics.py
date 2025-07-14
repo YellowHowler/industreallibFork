@@ -264,7 +264,7 @@ if __name__ == "__main__":
     franka_arm = FrankaArm()
     pipeline = perception_utils.get_camera_pipeline(
         width=config.camera.image_width, height=config.camera.image_height
-    )
+    ) 
     intrinsics = perception_utils.get_intrinsics(pipeline=pipeline)
     detector = apriltag.Detector(
         families=config.tag.type, quad_decimate=1.0, quad_sigma=0.0, decode_sharpening=0.25

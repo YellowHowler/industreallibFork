@@ -1,0 +1,81 @@
+calibrate_fixed_extrinsics:
+  camera:
+    "0":
+      name: "camera_1"
+      image_width: 1920
+      image_height: 1080
+    "1":
+      name: "camera_2"
+      image_width: 1920
+      image_height: 1080
+
+  tag:
+    "0":
+      type: tagStandard52h13
+      length: 6.0  # [inches]
+      active_pixel_ratio: 0.6  # For details, see https://github.com/AprilRobotics/apriltag/wiki/AprilTag-User-Guide
+      pose_t: [0.1, 0.2, 0.0]
+      pose_r: [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    "1":
+      type: tagStandard52h13
+      length: 6.0  # [inches]
+      active_pixel_ratio: 0.6 
+      pose_t: [0.2, 0.2, 0.0]
+      pose_r: [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    "2":
+      type: tagStandard52h13
+      length: 6.0  # [inches]
+      active_pixel_ratio: 0.6 
+      pose_t: [0.1, 0.3, 0.0]
+      pose_r: [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    "3":
+      type: tagStandard52h13
+      length: 6.0  # [inches]
+      active_pixel_ratio: 0.6 
+      pose_t: [0.2, 0.3, 0.0]
+      pose_r: [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+  tag_detection:
+    num_detection: 4
+    display_images: True
+
+  output:
+    file_name: workspace_mapping.json
+    image_file_name: tag_detection.png
+
+detect_objects_april:
+  output:
+    workspace_mapping_file_name: workspace_mapping.json
+  camera:
+    "0":
+      name: "camera_1"
+      image_width: 1920
+      image_height: 1080
+    "1":
+      name: "camera_2"
+      image_width: 1920
+      image_height: 1080
+  object_detection:
+    tag:
+      "0":
+        type: tagStandard52h13
+        length: 6.0  # [inches]
+        active_pixel_ratio: 0.6
+        label: 'four_hole_base'
+      "1":
+        type: tagStandard52h13
+        length: 6.0  # [inches]
+        active_pixel_ratio: 0.6
+        label: 'four_hole_inserter'
+    scene:
+      type: four_hole_3_classes
+      four_hole_3_classes:
+        label_names: ['background', 'four_hole_base', 'four_hole_inserter']
+    confidence_thresh: 0.9
+    display_images: True
+  augmentation:
+    augment_image: True
+    num_augmentations: 16
+  output:
+    json_file_name: object_detections.json
+    image_file_name: object_detections.png
+

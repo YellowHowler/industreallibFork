@@ -24,6 +24,34 @@ def get_perception_config(file_name, module_name):
 
     return config
 
+# MY CODE
+def get_connected_devices_serial():
+    serials = list()
+
+    for d in rs.context().devices:
+        if d.get_info(rs.camera_info.name).lower() != 'platform camera':                                                         
+            serial = d.get_info(rs.camera_info.serial_number)
+            product_line = d.get_info(rs.camera_info.product_line)
+            serials.append(serial)
+    serials = sorted(serials)
+    return serials
+
+def get_camera_pipeline_with_serial(width, height, serial):
+    """Starts an RGB image stream from the RealSense. Gets pipeline object."""
+    # NOTE: Spliced from
+    # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
+    pipeline = rs.pipeline()
+    config = rs.config()
+    config.enable_device(serial)
+    
+    config.enable_stream(
+        stream_type=rs.stream.color, width=width, height=height, format=rs.format.bgr8, framerate=30
+    )
+
+    pipeline.start(config)
+
+    return pipeline
+# MY CODE END
 
 def get_camera_pipeline(width, height):
     """Starts an RGB image stream from the RealSense. Gets pipeline object."""
@@ -39,7 +67,6 @@ def get_camera_pipeline(width, height):
     pipeline.start(config)
 
     return pipeline
-
 
 def load_realsense_params(file_name, realsense_config):
     """Loads a JSON file exported from the Intel RealSense Viewer."""
@@ -146,6 +173,42 @@ def get_tag_pose_in_camera_frame(detector, image, intrinsics, tag_length, tag_ac
 
     return is_detected, pos, ori_mat, center_pixel, corner_pixels, family
 
+# MY CODE
+def get_all_tag_poses_in_camera_frame(detector, image, intrinsics, tag_length, tag_active_pixel_ratio):
+    """Detects all AprilTags in an image. Gets the pose of the tag in the camera frame."""
+    gray_image = cv2.cvtColor(src=image.astype(np.uint8), code=cv2.COLOR_BGR2GRAY)
+    tag_active_length = tag_length * 0.0254 * tag_active_pixel_ratio  # inches to meters
+
+    detections = detector.detect(
+        img=gray_image,
+        estimate_tag_pose=True,
+        camera_params=[intrinsics["fx"], intrinsics["fy"], intrinsics["cx"], intrinsics["cy"]],
+        tag_size=tag_active_length,
+    )
+
+    tag_results = []
+    is_detected = False
+    num_detected = 0
+
+    if detections: 
+        is_detected = True
+        num_detected = len(detections)
+
+        for det in detections:
+            result = {
+                "id": det.tag_id,
+                "pos": det.pose_t.copy().squeeze(),     # (3,)
+                "ori_mat": det.pose_R.copy(),            # (3, 3)
+                "center_pixel": det.center,                  # (2,)
+                "corner_pixels": det.corners,                      # (4, 2)
+                "family": det.tag_family                     # bytes
+            }
+            tag_results.append(result)
+    else:
+        is_detected = False
+
+    return is_detected, num_detected, tag_results
+# MY CODE END
 
 def convert_tag_pose_to_robot_frame(tag_pose_t, tag_pose_r, extrinsics, robot_pose_t, robot_pose_r):
     """Converts the tag pose in the camera frame to the tag pose in the robot frame."""
@@ -176,11 +239,13 @@ def convert_tag_pose_to_robot_frame(tag_pose_t, tag_pose_r, extrinsics, robot_po
     return from_tag_to_robot_t, from_tag_to_robot_r
 
 
-def get_extrinsics(file_name):
+def get_extrinsics(file_name, camera_name=None):
     """Loads the extrinsics from a JSON file."""
     with open(os.path.join(os.path.dirname(__file__), '..', 'io', file_name)) as f:
         json_obj = f.read()
 
     extrinsics_dict = json.loads(json_obj)
 
-    return extrinsics_dict
+    if(camera_name is None):
+        return extrinsics_dict
+    return extrinsics_dict[camera_name]

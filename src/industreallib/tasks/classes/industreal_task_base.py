@@ -160,10 +160,11 @@ class IndustRealTaskBase:
 
     def _get_object_coords_from_perception(self, perception_config_file_name):
         """Gets object coordinates (x, y, theta) from perception."""
-        # Map workspace (saves to JSON)
-        map_workspace.main(
-            perception_config_file_name=perception_config_file_name, franka_arm=self.franka_arm
-        )
+        if "fixed" not in perception_config_file_name:
+            # Map workspace (saves to JSON)
+            map_workspace.main(
+                perception_config_file_name=perception_config_file_name, franka_arm=self.franka_arm
+            )
 
         # Detect objects and get object coordinates (x, y, theta)
         object_coords, object_labels = detect_objects.main(
