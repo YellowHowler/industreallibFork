@@ -44,40 +44,50 @@ def get_args():
 
     return args
 
-def _collect_tag_poses(config, detectors, intrinsics, pipeline):
+def _collect_tag_poses(config, detector, intrinsics, pipeline):
     """Gets the tag poses."""
     num_tag_detections = 0
-    tag_inds, tag_poses_t, tag_poses_r = [], [], []
+    tag_ids, tag_poses_t, tag_poses_r = [], [], []
 
     tag_config = config.tag
 
-    for tag_ind, detector in zip(tag_config.keys(), detectors):
-        tag = tag_config[tag_ind]
+    image = perception_utils.get_image(
+        pipeline=pipeline, display_images=config.tag_detection.display_images
+    )
+    (
+        are_tags_detected,
+        _,
+        tag_detection_results,
+    ) = perception_utils.get_all_tag_poses_in_camera_frame(
+        detector=detector,
+        image=image,
+        intrinsics=intrinsics,
+        tag_length=tag.length,
+        tag_active_pixel_ratio=tag.active_pixel_ratio,
+    )
 
-        image = perception_utils.get_image(
-            pipeline=pipeline, display_images=config.tag_detection.display_images
-        )
-        (
-            is_tag_detected,
-            tag_pose_t,
-            tag_pose_r,
-            _,
-            tag_corner_pixels,
-            tag_family,
-        ) = perception_utils.get_tag_pose_in_camera_frame(
-            detector=detector,
-            image=image,
-            intrinsics=intrinsics,
-            tag_length=tag.length,
-            tag_active_pixel_ratio=tag.active_pixel_ratio,
-        )
+    if are_tags_detected:
+        for tag_detection_result in tag_detection_results:
+            (
+                tag_id, 
+                tag_pose_t,
+                tag_pose_r,
+                tag_corner_pixels,
+                tag_family,
+            ) = (
+                tag_detection_result.id,
+                tag_detection_result.pos,
+                tag_detection_result.ori_mat,
+                tag_detection_result.corner_pixels,
+                tag_detection_result.family,
+            )
 
-        if is_tag_detected:
-            print("\nTag detected.")
+            tag = tag_config[str(tag_id)]
+
+            print(f"Tag {tag_id} detected.")
             num_tag_detections += 1
-            print(f"Collected {num_tag_detections} tag detections.")
 
-            tag_inds.append(tag_ind)
+            tag_ids.append(tag_id)
             tag_poses_t.append(tag_pose_t.tolist())
             tag_poses_r.append(tag_pose_r.tolist())
 
@@ -86,34 +96,34 @@ def _collect_tag_poses(config, detectors, intrinsics, pipeline):
                 image=image, tag_corner_pixels=tag_corner_pixels, tag_family=tag_family
             )
 
-            if config.tag_detection.display_images:
-                cv2.imshow("Tag Detection", image_labeled)
-                cv2.waitKey(delay=2000)
-                cv2.destroyAllWindows()
+            if num_tag_detections == config.tag_detection.num_detections:
+                break
 
-        else:
-            print("\nTag not detected.")
+        if config.tag_detection.display_images:
+            cv2.imshow("Tag Detection", image_labeled)
+            cv2.waitKey(delay=2000)
+            cv2.destroyAllWindows()
 
-        if num_tag_detections == config.tag_detection.num_detections:
-            break
+    else:
+        print("Tags not detected.")
 
-    return tag_inds, tag_poses_t, tag_poses_r
+    return tag_ids, tag_poses_t, tag_poses_r
 
-def _get_camera_pose(config, tag_inds, tag_poses_t_cam, tag_poses_r_cam):
+def _get_camera_pose(config, tag_ids, tag_poses_t_cam, tag_poses_r_cam):
     """
     Estimate the camera pose in world frame from observed tag poses in camera frame,
     and known tag poses in world frame from config.
     """
-    tag_config = config.tag_poses
+    tag_config = config.tag.tag_ids
 
     R_target2cam = []
     t_target2cam = []
     R_tag2world = []
     t_tag2world = []
 
-    for tag_ind, t_cam, R_cam in zip(tag_inds, tag_poses_t_cam, tag_poses_r_cam):
-        if tag_ind not in tag_config:
-            print(f"Tag {tag_ind} not found in config — skipping.")
+    for tag_id, t_cam, R_cam in zip(tag_ids, tag_poses_t_cam, tag_poses_r_cam):
+        if tag_id not in tag_config:
+            print(f"Tag {tag_id} not found in config — skipping.")
             continue
 
         # Camera-frame observation (what the detector sees)
@@ -121,7 +131,7 @@ def _get_camera_pose(config, tag_inds, tag_poses_t_cam, tag_poses_r_cam):
         t_target2cam.append(np.array(t_cam))           # Translation: tag to camera
 
         # World-frame ground truth (from config)
-        tag_info = tag_config[tag_ind]
+        tag_info = tag_config[str(tag_id)]
         R_world_to_tag = np.array(tag_info["pose_r"])  # Rotation: world to tag
         t_world_to_tag = np.array(tag_info["pose_t"])  # Translation: world to tag
 
@@ -181,13 +191,9 @@ if __name__ == "__main__":
     )
 
     # Initialize AprilTag detector
-    detectors = []
-    for tag_ind in config.tag.keys():
-        tag = config.tag[tag_ind]
-        detector = apriltag.Detector(
-            families=tag.type, quad_decimate=1.0, quad_sigma=0.0, decode_sharpening=0.25
-        )
-        detectors.append(detector)
+    detector = apriltag.Detector(
+        families=config.tag.type, quad_decimate=1.0, quad_sigma=0.0, decode_sharpening=0.25
+    )
                    
     # Initialize cameras and get their world poses
     serials = perception_utils.get_connected_devices_serial()
@@ -200,16 +206,16 @@ if __name__ == "__main__":
         ) 
         intrinsics = perception_utils.get_intrinsics(pipeline=pipeline)
 
-        tag_inds, tag_poses_t_cam, tag_poses_r_cam = _collect_tag_poses(
+        tag_ids, tag_poses_t_cam, tag_poses_r_cam = _collect_tag_poses(
             config=config,
-            detectors=detectors,
+            detector=detector,
             intrinsics=intrinsics,   
             pipeline=pipeline
         ) 
 
         camera_pose_r, camera_pose_t = _get_camera_pose(
             config=config,
-            tag_inds=tag_inds,
+            tag_ids=tag_ids,
             tag_poses_t_cam=tag_poses_t_cam,
             tag_poses_r_cam=tag_poses_r_cam,
         )

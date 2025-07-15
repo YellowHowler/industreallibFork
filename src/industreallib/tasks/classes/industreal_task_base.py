@@ -98,7 +98,7 @@ class IndustRealTaskBase:
             print("\nGoals:")
             for goal in self.goal_coords:
                 print(goal)
-
+ 
     def _get_goals_from_perception(self):
         """Gets goals for the task based on perception."""
         object_coords, object_labels = self._get_object_coords_from_perception(

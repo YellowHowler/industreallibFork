@@ -38,19 +38,13 @@ def main(perception_config_file_name):
     with open(extrinsics_path, "r") as f:
         camera_extrinsics = json.load(f)
 
-    # Prepare tag detectors
-    detectors = {
-        tag_id: apriltag.Detector(
-            families=tag_cfg.type,
-            quad_decimate=1.0,
-            quad_sigma=0.0,
-            decode_sharpening=0.25
-        )
-        for tag_id, tag_cfg in config.object_detection.tag.items()
-    }
+    # Prepare tag detector
+    detector = apriltag.Detector(
+        families=config.tag.type, quad_decimate=1.0, quad_sigma=0.0, decode_sharpening=0.25
+    )
 
     # Accumulate detections across cameras per tag
-    tag_detections = {tag_id: [] for tag_id in config.object_detection.tag.keys()}
+    tag_detections = {tag_id: [] for tag_id in config.object_detection.tag.tag_ids.keys()}
 
     # Loop over all cameras
     for cam_id, cam_cfg in config.camera.items():
@@ -76,33 +70,50 @@ def main(perception_config_file_name):
         intrinsics = perception_utils.get_intrinsics(pipeline)
 
         # Detect each tag
-        for tag_id, tag_cfg in config.object_detection.tag.items():
-            detector = detectors[tag_id]
+        image = perception_utils.get_image(
+            pipeline=pipeline, display_images=config.tag_detection.display_images
+        )
+        (
+            are_tags_detected,
+            num_detections,
+            tag_detection_results,
+        ) = perception_utils.get_all_tag_poses_in_camera_frame(
+            detector=detector,
+            image=image,
+            intrinsics=intrinsics,
+            tag_length=tag.length,
+            tag_active_pixel_ratio=tag.active_pixel_ratio,
+        )
 
-            is_tag_detected, tag_pose_t, tag_pose_r, _, _, _ = perception_utils.get_tag_pose_in_camera_frame(
-                detector=detector,
-                image=image,
-                intrinsics=intrinsics,
-                tag_length=tag_cfg.length,
-                tag_active_pixel_ratio=tag_cfg.active_pixel_ratio,
-            )
+        if are_tags_detected:
+            for tag_detection_result in tag_detection_results:
+                (
+                    tag_id, 
+                    tag_pose_t,
+                    tag_pose_r,
+                ) = (
+                    tag_detection_result.id,
+                    tag_detection_result.pos,
+                    tag_detection_result.ori_mat,
+                )
 
-            if not is_tag_detected:
-                print(f"Tag {tag_id} not detected by {cam_name}.")
-                continue
+                tag = config.tag.tag_ids[str(tag_id)]
 
-            # Tag pose in camera frame → world frame
-            T_tag_in_cam = np.eye(4)
-            T_tag_in_cam[:3, :3] = np.array(tag_pose_r)
-            T_tag_in_cam[:3, 3] = np.array(tag_pose_t).flatten()
-            T_tag_in_world = T_cam_in_world @ T_tag_in_cam
+                # Tag pose in camera frame → world frame
+                T_tag_in_cam = np.eye(4)
+                T_tag_in_cam[:3, :3] = np.array(tag_pose_r)
+                T_tag_in_cam[:3, 3] = np.array(tag_pose_t).flatten()
+                T_tag_in_world = T_cam_in_world @ T_tag_in_cam
 
-            # Extract [x, y, theta]
-            x, y = T_tag_in_world[0, 3], T_tag_in_world[1, 3]
-            theta = np.arctan2(T_tag_in_world[1, 0], T_tag_in_world[0, 0])
-            tag_detections[tag_id].append([x, y, theta])
+                # Extract [x, y, theta]
+                x, y = T_tag_in_world[0, 3], T_tag_in_world[1, 3]
+                theta = np.arctan2(T_tag_in_world[1, 0], T_tag_in_world[0, 0])
+                tag_detections[tag_id].append([x, y, theta])
 
-            print(f"Tag {tag_id} seen by {cam_name}: (x={x:.3f}, y={y:.3f}, θ={theta:.2f})")
+                print(f"Tag {tag_id} seen by {cam_name}: (x={x:.3f}, y={y:.3f}, θ={theta:.2f})")
+        
+        else:
+            print("Tags not detected.")
 
     # Average detections
     box_real_coords = []
@@ -118,7 +129,7 @@ def main(perception_config_file_name):
         cos_sum = np.cos(poses[:, 2]).sum()
         theta_mean = np.arctan2(sin_sum, cos_sum)
 
-        label = config.tag[tag_id].get("label", f"tag_{tag_id}")
+        label = config.tag.tag_ids[tag_id].label
         box_real_coords.append([x_mean, y_mean, theta_mean])
         labels_text.append(label)
 

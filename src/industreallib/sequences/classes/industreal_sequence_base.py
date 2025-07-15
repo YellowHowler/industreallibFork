@@ -60,10 +60,11 @@ class IndustRealSequenceBase:
     def _get_object_coords_from_perception(self):
         """Gets object coordinates (x, y, theta) from perception."""
         # Map workspace (saves to JSON)
-        map_workspace.main(
-            perception_config_file_name=self._sequence_instance_config.goals.perception.config,
-            franka_arm=self.franka_arm,
-        )
+        if "fixed" not in self._sequence_instance_config.goals.perception.config:
+            map_workspace.main(
+                perception_config_file_name=self._sequence_instance_config.goals.perception.config,
+                franka_arm=self.franka_arm,
+            )
 
         # Detect objects and get object coordinates (x, y, theta)
         object_coords, object_labels = detect_objects.main(

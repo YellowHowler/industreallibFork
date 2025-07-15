@@ -186,7 +186,7 @@ def get_all_tag_poses_in_camera_frame(detector, image, intrinsics, tag_length, t
         tag_size=tag_active_length,
     )
 
-    tag_results = []
+    tag_detection_results = []
     is_detected = False
     num_detected = 0
 
@@ -194,20 +194,20 @@ def get_all_tag_poses_in_camera_frame(detector, image, intrinsics, tag_length, t
         is_detected = True
         num_detected = len(detections)
 
-        for det in detections:
+        for detection in detections:
             result = {
-                "id": det.tag_id,
-                "pos": det.pose_t.copy().squeeze(),     # (3,)
-                "ori_mat": det.pose_R.copy(),            # (3, 3)
-                "center_pixel": det.center,                  # (2,)
-                "corner_pixels": det.corners,                      # (4, 2)
-                "family": det.tag_family                     # bytes
+                "id": detection.tag_id,
+                "pos": detection.pose_t.copy().squeeze(),     # (3,)
+                "ori_mat": detection.pose_R.copy(),            # (3, 3)
+                "center_pixel": detection.center,                  # (2,)
+                "corner_pixels": detection.corners,                      # (4, 2)
+                "family": detection.tag_family                     # bytes
             }
-            tag_results.append(result)
+            tag_detection_results.append(result)
     else:
         is_detected = False
 
-    return is_detected, num_detected, tag_results
+    return is_detected, num_detected, tag_detection_results
 # MY CODE END
 
 def convert_tag_pose_to_robot_frame(tag_pose_t, tag_pose_r, extrinsics, robot_pose_t, robot_pose_r):
