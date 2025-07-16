@@ -23,10 +23,8 @@ import time
 import cv2
 import numpy as np
 import pupil_apriltags as apriltag 
-from frankapy import FrankaArm
 
 # NVIDIA
-import industreallib.control.scripts.control_utils as control_utils
 import industreallib.perception.scripts.perception_utils as perception_utils
 
 def get_args():
