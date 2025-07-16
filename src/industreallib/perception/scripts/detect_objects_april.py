@@ -47,7 +47,7 @@ def main(perception_config_file_name):
     tag_detections = {tag_id: [] for tag_id in config.object_detection.tag.tag_ids.keys()}
 
     # Loop over all cameras
-    for cam_id, cam_cfg in config.camera.items():
+    for _, cam_cfg in config.camera.items():
         cam_name = cam_cfg.name
         if cam_name not in camera_extrinsics:
             print(f"Camera extrinsics for '{cam_name}' not found. Skipping.")
@@ -60,8 +60,8 @@ def main(perception_config_file_name):
         T_cam_in_world[:3, 3] = np.array(cam_pose["position"])
 
         # Start camera and grab image
-        pipeline = perception_utils.get_camera_pipeline(
-            width=cam_cfg.image_width, height=cam_cfg.image_height
+        pipeline = perception_utils.get_camera_pipeline_with_serial(
+            width=cam_cfg.image_width, height=cam_cfg.image_height, serial=cam_cfg.serial
         )
         image = perception_utils.get_image(
             pipeline=pipeline,

@@ -2,10 +2,12 @@ calibrate_fixed_extrinsics:
   camera:
     "0":
       name: "camera_1"
+      serial: ""
       image_width: 1920
       image_height: 1080
     "1":
       name: "camera_2"
+      serial: ""
       image_width: 1920
       image_height: 1080
 

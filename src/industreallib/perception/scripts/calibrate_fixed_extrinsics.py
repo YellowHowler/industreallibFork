@@ -199,11 +199,10 @@ if __name__ == "__main__":
     serials = perception_utils.get_connected_devices_serial()
     print(serials)
     
-    for camera_ind in config.camera.keys():
-        camera = config.camera[camera_ind]
+    for camera in config.camera.values():
         pipeline = perception_utils.get_camera_pipeline(
-            width=config.camera.image_width, height=config.camera.image_height
-        ) 
+            width=camera.image_width, height=camera.image_height
+        )
         intrinsics = perception_utils.get_intrinsics(pipeline=pipeline)
 
         tag_ids, tag_poses_t_cam, tag_poses_r_cam = _collect_tag_poses(
