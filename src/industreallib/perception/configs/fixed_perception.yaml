@@ -11,7 +11,7 @@ calibrate_fixed_extrinsics:
 
   tag:
     type: tagStandard52h13
-    length: 6.0  # [inches]
+    length: 1.0  # [inches]
     active_pixel_ratio: 0.6  # For details, see https://github.com/AprilRobotics/apriltag/wiki/AprilTag-User-Guide
     tag_ids:
       "0":
