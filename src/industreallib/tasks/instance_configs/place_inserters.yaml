@@ -7,7 +7,7 @@ goals:
     num_goals: null
     bounds: null
   perception:
-    config: perception.yaml
+    config: fixed_perception.yaml
     selectors: ['four_hole_base']  # detections to select for task
     goal_heights:
       round_hole: 0.1111  # originally 0.1151

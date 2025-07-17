@@ -36,10 +36,8 @@ def get_connected_devices_serial():
     serials = sorted(serials)
     return serials
 
-def get_camera_pipeline_with_serial(width, height, serial):
+def get_camera_pipeline_with_serial(width, height, serial, use_depth=False, width_depth=None, height_depth=None):
     """Starts an RGB image stream from the RealSense. Gets pipeline object."""
-    # NOTE: Spliced from
-    # https://github.com/IntelRealSense/librealsense/blob/master/wrappers/python/examples/opencv_viewer_example.py
     pipeline = rs.pipeline()
     config = rs.config()
     config.enable_device(serial)
@@ -47,6 +45,11 @@ def get_camera_pipeline_with_serial(width, height, serial):
     config.enable_stream(
         stream_type=rs.stream.color, width=width, height=height, format=rs.format.bgr8, framerate=30
     )
+
+    if use_depth:
+        config.enable_stream(
+            stream_type=rs.stream.depth, width=width_depth, height=height_depth, format=rs.format.z16, framerate=30
+        )
 
     pipeline.start(config)
 

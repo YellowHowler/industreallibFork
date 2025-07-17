@@ -2,14 +2,18 @@ calibrate_fixed_extrinsics:
   camera:
     "0":
       name: "camera_1"
-      serial: ""
-      image_width: 1920
-      image_height: 1080
+      serial: "f1380463"
+      image_width: 640
+      image_height: 480
+      image_width_depth: 640
+      image_height_depth: 480
     "1":
       name: "camera_2"
-      serial: ""
-      image_width: 1920
-      image_height: 1080
+      serial: "f1421239"
+      image_width: 1280
+      image_height: 720
+      image_width_depth: 640
+      image_height_depth: 480
 
   tag:
     type: tagStandard52h13
@@ -40,12 +44,14 @@ detect_objects_april:
   camera:
     "0":
       name: "camera_1"
-      image_width: 1920
-      image_height: 1080
+      serial: "f1380463"
+      image_width: 640
+      image_height: 480
     "1":
       name: "camera_2"
-      image_width: 1920
-      image_height: 1080
+      serial: "f1421239"
+      image_width: 1280
+      image_height: 720
   object_detection:
     tag:
       type: tagStandard52h13
@@ -54,8 +60,10 @@ detect_objects_april:
       tag_ids:
         "4":
           label: 'four_hole_base'
+          offset: [0.0, 0.039, -0.005]
         "5":
           label: 'four_hole_inserter'
+          offset: [0.0, 0.0, -0.005]
     scene:
       type: four_hole_3_classes
       four_hole_3_classes:

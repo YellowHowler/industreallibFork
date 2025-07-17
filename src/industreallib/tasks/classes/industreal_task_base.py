@@ -30,6 +30,8 @@ import industreallib.perception.scripts.detect_objects as detect_objects
 import industreallib.perception.scripts.map_workspace as map_workspace
 import industreallib.perception.scripts.perception_utils as perception_utils
 
+import industreallib.perception.scripts.detect_objects_april as detect_objects_april
+
 
 class IndustRealTaskBase:
     """Defines base class for all tasks."""
@@ -167,9 +169,15 @@ class IndustRealTaskBase:
             )
 
         # Detect objects and get object coordinates (x, y, theta)
-        object_coords, object_labels = detect_objects.main(
-            perception_config_file_name=perception_config_file_name
-        )
+        if "fixed" not in perception_config_file_name:
+            object_coords, object_labels = detect_objects.main(
+                perception_config_file_name=perception_config_file_name
+            )
+        else:
+            object_coords, object_labels = detect_objects_april.main(
+                perception_config_file_name=perception_config_file_name
+            )
+      
         if not object_coords:
             raise ValueError(
                 "No objects detected. Make sure checkpoint and scene are specified                 "

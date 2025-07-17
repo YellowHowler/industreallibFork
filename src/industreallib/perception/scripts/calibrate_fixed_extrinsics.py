@@ -60,8 +60,8 @@ def _collect_tag_poses(config, detector, intrinsics, pipeline):
         detector=detector,
         image=image,
         intrinsics=intrinsics,
-        tag_length=tag.length,
-        tag_active_pixel_ratio=tag.active_pixel_ratio,
+        tag_length=tag_config.length,
+        tag_active_pixel_ratio=tag_config.active_pixel_ratio,
     )
 
     if are_tags_detected:
@@ -198,10 +198,15 @@ if __name__ == "__main__":
     print(serials)
     
     for camera in config.camera.values():
-        pipeline = perception_utils.get_camera_pipeline(
-            width=camera.image_width, height=camera.image_height
+        pipeline = perception_utils.get_camera_pipeline_with_serial(
+            width=camera.image_width, height=camera.image_height, serial=camera.serial,
+            use_depth=True, width_depth=camera.image_width_depth, height_depth=camera.image_height_depth
         )
         intrinsics = perception_utils.get_intrinsics(pipeline=pipeline)
+        
+        # Wait for pipeline to start
+        for _ in range(30):  # ~1 second at 30 FPS
+            pipeline.wait_for_frames()
 
         tag_ids, tag_poses_t_cam, tag_poses_r_cam = _collect_tag_poses(
             config=config,

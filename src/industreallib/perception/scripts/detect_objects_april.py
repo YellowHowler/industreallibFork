@@ -106,8 +106,13 @@ def main(perception_config_file_name):
                 T_tag_in_world = T_cam_in_world @ T_tag_in_cam
 
                 # Extract [x, y, theta]
-                x, y = T_tag_in_world[0, 3], T_tag_in_world[1, 3]
-                theta = np.arctan2(T_tag_in_world[1, 0], T_tag_in_world[0, 0])
+                offset_tag_to_object = np.eye(4)
+                offset_tag_to_object[:3, 3] = tag.offset if "offset" in tag else [0.0, 0.0, 0.0]
+
+                T_object_in_world = T_tag_in_world @ offset_tag_to_object
+                x, y = T_object_in_world[0, 3], T_object_in_world[1, 3]
+                theta = np.arctan2(T_object_in_world[1, 0], T_object_in_world[0, 0])
+                
                 tag_detections[tag_id].append([x, y, theta])
 
                 print(f"Tag {tag_id} seen by {cam_name}: (x={x:.3f}, y={y:.3f}, θ={theta:.2f})")
@@ -129,7 +134,7 @@ def main(perception_config_file_name):
         cos_sum = np.cos(poses[:, 2]).sum()
         theta_mean = np.arctan2(sin_sum, cos_sum)
 
-        label = config.tag.tag_ids[tag_id].label
+        label = config.tag.tag_ids[str(tag_id)].label
         box_real_coords.append([x_mean, y_mean, theta_mean])
         labels_text.append(label)
 

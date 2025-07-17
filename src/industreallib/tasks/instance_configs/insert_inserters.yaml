@@ -7,7 +7,7 @@ goals:
     num_goals: null
     bounds: null
   perception:  # currently used for pick-place-insert sequence
-    config: perception.yaml
+    config: fixed_perception.yaml
     selectors: ['four_hole_base']  # detections to select for task
     goal_heights:
       round_hole: 0.0811
