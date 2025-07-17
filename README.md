@@ -1,3 +1,5 @@
+This repository is a derivative of NVIDIA’s [https://github.com/NVlabs/industreallib], used and modified under the terms of the NVIDIA Source Code License. All use is restricted to non-commercial research and evaluation.
+
 # IndustRealLib
 
 This repo contains the real-world policy deployment code used in [Tang and Lin, et al., "IndustReal: Transferring Contact-Rich Assembly Tasks from Simulation to Reality," Robotics: Science and Systems (RSS), 2023](https://arxiv.org/abs/2305.17110). The goal of the repo is to allow researchers to be able to deploy a subset of our RL policies or deploy similar policies of their own. **The repo does not intend to be an all-in-one or long-term solution for sim-to-real deployment**, but simply shows one way it can be done.
