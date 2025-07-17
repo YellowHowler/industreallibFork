@@ -43,6 +43,11 @@ class IndustRealTaskInsert(IndustRealTaskBase):
         curr_pos = curr_state["pose"].translation
         curr_ori_mat = curr_state["pose"].rotation
 
+        # MYCODE
+        joint_torques = np.concatenate([curr_state["joint_torques"], np.zeros(2)])
+        applied_wrench = curr_state["ee_force_torque"]
+        # MYCODE END
+
         # NOTE: For IndustReal insertion policies, default goal z-position was 3 mm lower
         goal_pos_offset = goal_pos.copy()
         goal_pos_offset[2] -= 0.003
