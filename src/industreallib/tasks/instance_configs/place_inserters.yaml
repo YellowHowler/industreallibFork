@@ -1,5 +1,5 @@
 task:
-  class: IndustRealTaskPick
+  class: IndustRealTaskPlace
 
 goals:
   source: perception  # options: random, perception, guide
@@ -7,10 +7,11 @@ goals:
     num_goals: null
     bounds: null
   perception:
-    config: fixed_perception.yaml
-    selectors: ['four_hole_inserter']  # detections to select for task
+    config: perception.yaml
+    selectors: ['four_hole_base']  # detections to select for task
     goal_heights:
-      four_hole_inserter: 0.0811  # originally 0.0871
+      round_hole: 0.1111  # originally 0.1151
+      rect_hole: 0.1111  # originaly 0.1151
     goal_lateral_offsets: null
   guide:
     xy_perturbation: null
@@ -20,11 +21,11 @@ goals:
 motion:
   source: rl  # options: rl, frankapy, libfranka, frankapy_and_libfranka
   duration: 20.0
-  do_before: ['open_gripper']  # options: open_gripper, close_gripper, go_upward, go_downward, go_home
-  do_after: ['close_gripper', 'go_upward', 'open_gripper', 'go_home']
+  do_before: ['close_gripper']  # options: open_gripper, close_gripper, go_upward, go_downward, go_home
+  do_after: ['go_home']
 
 rl:
-  checkpoint_name: industreal_policy_generic
+  checkpoint_name: industreal_policy_place
   policy_eval_freq: 60.0
   pos_err_thresh: 0.001  # position threshold below which to terminate early
   ori_err_rad_thresh: 0.0873  # orientation threshold below which to terminate early

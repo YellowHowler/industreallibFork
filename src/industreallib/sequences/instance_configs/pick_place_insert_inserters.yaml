@@ -1,0 +1,26 @@
+sequence:
+  # NOTE: The task instances are executed in interleaved fashion
+  # on the specified parts. In other words, for the following
+  # parameters, the execution order would be as follows:
+  # 1) pick_inserters on four_hole_inserter
+  # 2) place_inserters on four_hole_base
+  # 3) insert_inserters on four_hole_base
+  task_instance_config_names: [pick_inserters, place_inserters, insert_inserters]
+  task_instance_config_subdir: null
+  pick_inserters:
+    part_order: ['four_hole_inserter']
+    do_before: ['open_gripper']  # options: open_gripper, close_gripper, go_upward, go_downward, go_home
+    do_after: ['close_gripper', 'go_upward']
+  place_inserters:
+    part_order: ['four_hole_base']
+    do_before: null
+    do_after: null
+  insert_inserters:
+    part_order: ['four_hole_base']
+    do_before: null
+    do_after: ['open_gripper', 'go_upward', 'go_home']
+
+goals:
+  source: perception  # currently the only supported option
+  perception:
+    config: fixed_perception.yaml
