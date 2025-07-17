@@ -185,7 +185,7 @@ if __name__ == "__main__":
 
     args = get_args()
     config = perception_utils.get_perception_config(
-        file_name=args.perception_config_file_name, module_name="calibrate_extrinsics"
+        file_name=args.perception_config_file_name, module_name="calibrate_fixed_extrinsics"
     )
 
     # Initialize AprilTag detector
