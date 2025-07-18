@@ -54,6 +54,29 @@ def get_camera_pipeline_with_serial(width, height, serial, use_depth=False, widt
     pipeline.start(config)
 
     return pipeline
+
+def get_image_color_depth(pipeline, display_images):
+    """Gets an Depth image from the RealSense."""
+    print("\nAcquiring image...")
+    frames = pipeline.wait_for_frames()
+    color_frame = frames.get_color_frame()
+    color_image = np.asanyarray(color_frame.get_data())
+    depth_frame = frames.get_depth_frame()
+    depth_image = np.asanyarray(depth_frame.get_data())
+    print("Acquired image.")
+
+    if display_images:
+        cv2.namedWindow(winname="RGB Output", flags=cv2.WINDOW_AUTOSIZE)
+        cv2.imshow(winname="RGB Output", mat=color_image)
+        cv2.waitKey(delay=1000)
+        cv2.destroyAllWindows()
+
+        cv2.namedWindow(winname="Depth Output", flags=cv2.WINDOW_AUTOSIZE)
+        cv2.imshow(winname="Depth Output", mat=depth_image)
+        cv2.waitKey(delay=1000)
+        cv2.destroyAllWindows()
+
+    return color_image, depth_image
 # MY CODE END
 
 def get_camera_pipeline(width, height):
