@@ -119,6 +119,8 @@ def main(perception_config_file_name):
         
         else:
             print("Tags not detected.")
+        
+        pipeline.stop()
 
     # Average detections
     box_real_coords = []
@@ -147,3 +149,4 @@ if __name__ == "__main__":
     args = get_args()
 
     main(perception_config_file_name=args.perception_config_file_name)
+    cv2.destroyAllWindows()
