@@ -224,3 +224,7 @@ if __name__ == "__main__":
         )
 
         _save_extrinsics(file_name=config.output["file_name"], camera_name=camera.name, camera_pose_t=camera_pose_t, camera_pose_r=camera_pose_r)
+
+        pipeline.stop()
+
+    cv2.destroyAllWindows()
