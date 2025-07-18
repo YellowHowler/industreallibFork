@@ -92,9 +92,9 @@ def main(perception_config_file_name):
                     tag_pose_t,
                     tag_pose_r,
                 ) = (
-                    tag_detection_result.id,
-                    tag_detection_result.pos,
-                    tag_detection_result.ori_mat,
+                    tag_detection_result["id"],
+                    tag_detection_result["pos"],
+                    tag_detection_result["ori_mat"],
                 )
 
                 tag = config.tag.tag_ids[str(tag_id)]

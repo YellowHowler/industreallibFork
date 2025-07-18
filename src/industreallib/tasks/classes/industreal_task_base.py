@@ -538,5 +538,13 @@ class IndustRealTaskBase:
                     control_utils.go_downward(franka_arm=franka_arm, dist=0.2, duration=2.0)
                 elif step == "go_home":
                     control_utils.go_home(franka_arm=franka_arm, duration=5.0)
+                elif step == "screw_down":
+                    control_utils.screw_down(
+                        franka_arm=franka_arm, 
+                        total_rotation_deg=1170, 
+                        steps=40,
+                        down_step_mm=6.5/40,
+                        duration=0.2
+                    )
                 else:
                     raise ValueError(f"Invalid step {step} in motion procedure.")

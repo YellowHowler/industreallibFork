@@ -73,14 +73,14 @@ def _collect_tag_poses(config, detector, intrinsics, pipeline):
                 tag_corner_pixels,
                 tag_family,
             ) = (
-                tag_detection_result.id,
-                tag_detection_result.pos,
-                tag_detection_result.ori_mat,
-                tag_detection_result.corner_pixels,
-                tag_detection_result.family,
+                tag_detection_result["id"],
+                tag_detection_result["pos"],
+                tag_detection_result["ori_mat"],
+                tag_detection_result["corner_pixels"],
+                tag_detection_result["family"],
             )
 
-            tag = tag_config[str(tag_id)]
+            tag = tag_config["tag_ids"][str(tag_id)]
 
             print(f"Tag {tag_id} detected.")
             num_tag_detections += 1
@@ -90,17 +90,18 @@ def _collect_tag_poses(config, detector, intrinsics, pipeline):
             tag_poses_r.append(tag_pose_r.tolist())
 
             # Draw labels on image
-            image_labeled = perception_utils.label_tag_detection(
+            image = perception_utils.label_tag_detection(
                 image=image, tag_corner_pixels=tag_corner_pixels, tag_family=tag_family
             )
 
-            if num_tag_detections == config.tag_detection.num_detections:
+            if num_tag_detections == config["tag_detection"]["num_detection"]:
                 break
 
         if config.tag_detection.display_images:
-            cv2.imshow("Tag Detection", image_labeled)
+            cv2.imshow("Tag Detection", image)
             cv2.waitKey(delay=2000)
             cv2.destroyAllWindows()
+            perception_utils.save_image(image, config.output.image_file_name)
 
     else:
         print("Tags not detected.")
@@ -112,7 +113,7 @@ def _get_camera_pose(config, tag_ids, tag_poses_t_cam, tag_poses_r_cam):
     Estimate the camera pose in world frame from observed tag poses in camera frame,
     and known tag poses in world frame from config.
     """
-    tag_config = config.tag.tag_ids
+    tag_config = config.tag["tag_ids"]
 
     R_target2cam = []
     t_target2cam = []
@@ -120,7 +121,7 @@ def _get_camera_pose(config, tag_ids, tag_poses_t_cam, tag_poses_r_cam):
     t_tag2world = []
 
     for tag_id, t_cam, R_cam in zip(tag_ids, tag_poses_t_cam, tag_poses_r_cam):
-        if tag_id not in tag_config:
+        if str(tag_id) not in tag_config:
             print(f"Tag {tag_id} not found in config — skipping.")
             continue
 
@@ -222,4 +223,4 @@ if __name__ == "__main__":
             tag_poses_r_cam=tag_poses_r_cam,
         )
 
-        _save_extrinsics(config=config, camera_name=camera.name, camera_pose_t=camera_pose_t, camera_pose_r=camera_pose_r)
+        _save_extrinsics(file_name=config.output["file_name"], camera_name=camera.name, camera_pose_t=camera_pose_t, camera_pose_r=camera_pose_r)

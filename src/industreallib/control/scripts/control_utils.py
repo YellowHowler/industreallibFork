@@ -34,6 +34,52 @@ def close_gripper(franka_arm):
     franka_arm.close_gripper()
     print("Closed gripper.")
 
+# MYCODE
+def rotate_clockwise(franka_arm, angle_rad, duration):
+    """Rotates the gripper clockwise"""
+    # Get current pose
+    curr_pose = franka_arm.get_pose()
+    curr_pos = curr_pose.translation
+    curr_ori_mat = curr_pose.rotation
+
+    # Convert current rotation matrix to Euler angles
+    r = Rotation.from_matrix(curr_ori_mat)
+    euler = r.as_euler('xyz')  # convention: roll, pitch, yaw
+
+    # Subtract yaw angle (clockwise = negative yaw)
+    euler[2] -= angle_rad
+
+    # Convert back to rotation matrix
+    new_ori_mat = Rotation.from_euler('xyz', euler).as_matrix()
+
+    # Send pose command
+    franka_arm.goto_pose(
+        tool_pose=RigidTransform(
+            translation=curr_pos,
+            rotation=new_ori_mat,
+            from_frame="franka_tool",
+            to_frame="world"
+        ),
+        duration=duration,
+        use_impedance=False,
+        ignore_virtual_walls=True
+    )
+    print("Finished clockwise rotation.")
+    
+def screw_down(franka_arm, total_rotation_deg=360, steps=36, down_step_mm=1.0, duration=0.2):
+    """Performs a screw motion"""
+    total_rotation_rad = np.radians(total_rotation_deg)
+    step_angle = total_rotation_rad / steps
+    down_step_m = down_step_mm / 1000
+    
+    print("\nStarting screw motion...")
+
+    for _ in range(steps):
+        # Rotate clockwise
+        rotate_clockwise(franka_arm, angle_rad=step_angle, duration=duration)
+        # Move downward
+        go_downward(franka_arm, dist=down_step_m, duration=duration)
+# END MYCODE
 
 def go_to_joint_angles(franka_arm, joint_angles, duration):
     """Goes to a specified set of joint angles."""
