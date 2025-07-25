@@ -142,36 +142,73 @@ def _get_detections(config, model, image):
     return boxes, labels, scores, masks
 
 
-def _get_real_object_coords(config, boxes, masks):
-    """Gets the real-world (x, y, theta) coordinates of detected objects."""
-    with open(os.path.join(os.path.dirname(__file__), '..', 'io', config.input.workspace_mapping_file_name)) as f:
-        json_obj = f.read()
-    workspace_mapping = json.loads(json_obj)
-    real_x_max = workspace_mapping["workspace_bounds"][0][1]
-    real_y_max = workspace_mapping["workspace_bounds"][1][1]
-    pixel_length = workspace_mapping["pixel_length"]
+def _get_real_object_coords(config, boxes, masks, depth_image, intrinsics, extrinsics):
+    """Gets the real-world (x, y, theta) coordinates of detected objects using depth and camera calibration."""
 
-    angles = []
-    for mask in masks:
-        angle = _get_mask_angle(mask=mask)
-        angles.append(angle)
-    angles = np.asarray(angles)
+    def pixel_to_cam_coords(u, v, depth, intrinsics):
+        """
+        Convert a 2D pixel and depth to 3D camera coordinates.
 
-    box_pixel_centers, box_real_coords = [], []
-    for box, angle in zip(boxes, angles):
-        box_center_pixel_x = (box[0] + box[2]) / 2.0
-        box_center_pixel_y = (box[1] + box[3]) / 2.0
-        box_center_real_x = real_x_max - box_center_pixel_y * pixel_length
-        box_center_real_y = real_y_max - box_center_pixel_x * pixel_length
-        # Alias angle to prevent large gripper rotations
-        if angle < np.pi / 4:
-            box_real_angle = angle
-        elif angle > np.pi / 4:
-            box_real_angle = angle - np.pi / 2
-        box_pixel_centers.append([box_center_pixel_x, box_center_pixel_y])
-        box_real_coords.append([box_center_real_x, box_center_real_y, box_real_angle])
+        Args:
+            u, v: Pixel coordinates (float)
+            depth: Depth value at (u, v) in meters
+            intrinsics: Dictionary with 'fx', 'fy', 'cx', 'cy'
 
-    return box_real_coords, box_pixel_centers
+        Returns:
+            np.array of shape (3,), 3D point in camera frame
+        """
+        fx, fy = intrinsics["fx"], intrinsics["fy"]
+        cx, cy = intrinsics["cx"], intrinsics["cy"]
+        x = (u - cx) * depth / fx
+        y = (v - cy) * depth / fy
+        z = depth
+        return np.array([x, y, z])
+
+    def get_angle_from_mask(mask):
+        """Get orientation angle from binary mask using min area rect."""
+        mask_processed = mask.squeeze(0) * 255.0  # (H, W)
+        contours, _ = cv2.findContours(
+            image=mask_processed.astype(np.uint8),
+            mode=cv2.RETR_EXTERNAL,
+            method=cv2.CHAIN_APPROX_SIMPLE,
+        )
+        min_area_rect = cv2.minAreaRect(points=contours[0])
+        angle = min_area_rect[2] * np.pi / 180.0  # Convert degrees to radians
+        return angle
+
+    box_real_coords = []
+
+    for box, mask in zip(boxes, masks):
+        # Get center pixel of bounding box
+        u = (box[0] + box[2]) / 2.0  # x (cols)
+        v = (box[1] + box[3]) / 2.0  # y (rows)
+
+        # Get depth in meters
+        depth_val = depth_image[int(v), int(u)]
+
+        # Skip if invalid depth
+        if depth_val <= 0.01:
+            continue
+
+        # 3D point in camera coordinates
+        point_cam = pixel_to_cam_coords(u, v, depth_val, intrinsics)  # shape (3,)
+        point_cam_h = np.concatenate([point_cam, [1.0]])  # to homogeneous (4,)
+
+        # Transform to world coordinates
+        point_world = extrinsics @ point_cam_h  # shape (4,)
+        x_world, y_world = point_world[0], point_world[1]
+
+        # Estimate object angle
+        angle = get_angle_from_mask(mask)
+        
+
+        # Clamp angle to range -pi/2 to pi/2 (helps with symmetric object ambiguity)
+        if angle > np.pi / 2:
+            angle -= np.pi
+
+        box_real_coords.append([x_world, y_world, angle])
+
+    return box_real_coords
 
 
 def _get_mask_angle(mask):
