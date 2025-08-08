@@ -58,11 +58,13 @@ for i in range(len(prediction["masks"])):
         # Generate a random color
         color = np.random.rand(3)
 
+        alpha = 0.8
+        
         # Apply color to mask
         for c in range(3):
             blended[:, :, c] = np.where(
                 mask_bin == 1,
-                blended[:, :, c] * 0.5 + color[c] * 0.5,
+                blended[:, :, c] * (1 - alpha) + color[c] * alpha,
                 blended[:, :, c]
             )
 
