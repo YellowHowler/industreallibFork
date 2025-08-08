@@ -63,11 +63,11 @@ def main():
             rgb_path = os.path.join(cam_folder, f"rgb_{counter:04d}.png")
             cv2.imwrite(rgb_path, color_image)
 
-            # Save Depth (16-bit PNG)
-            depth_path = os.path.join(cam_folder, f"depth_{counter:04d}.png")
-            cv2.imwrite(depth_path, depth_image)
+            # # Save Depth (16-bit PNG)
+            # depth_path = os.path.join(cam_folder, f"depth_{counter:04d}.png")
+            # cv2.imwrite(depth_path, depth_image)
 
-            print(f"Saved to {rgb_path} and {depth_path}")
+            print(f"Saved to {rgb_path}")
 
         counter += 1
 
