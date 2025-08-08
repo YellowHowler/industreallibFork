@@ -415,6 +415,11 @@ def main():
             "nema_3_prong_plug",
             "nema_3_prong_socket",
         ]
+    elif args.asset == "four_hole":
+        asset_dir_list = [
+            "four_hole_base",
+            "four_hole_inserter",
+        ]
     else:
         raise ValueError(f"Undefined asset group: {args.asset}")
 
