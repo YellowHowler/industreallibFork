@@ -1,304 +1,294 @@
-# Copyright (c) 2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-#
-# Licensed under the NVIDIA Source Code License [see LICENSE for details].
-"""IndustRealLib: Detect objects script.
-
-This script detects objects in an image from an Intel RealSense camera on a
-Franka robot. The script loads parameters for the detection procedure from a
-specified YAML file, captures an image, loads a trained detection model, runs
-the detection procedure, writes object detection information to a YAML file,
-and saves the labeled image.
-
-Typical usage examples:
-- Standalone: python detect_objects.py -p perception.yaml
-- Imported: detect_objects.main(perception_config_file_name=perception.yaml)
-"""
-
-# Standard Library
-import argparse
-import json
-
-# Third Party
-import cv2
-import numpy as np
 import os
+import json
+import argparse
+import numpy as np
 import torch
-from kornia.augmentation import ColorJiggle
-from torchvision.transforms import functional as tf
+import torchvision.transforms as T
+from torchvision.models.detection import maskrcnn_resnet50_fpn
+from PIL import Image
 
-# NVIDIA
+import pyrealsense2 as rs
+
+# NVIDIA helpers
 import industreallib.perception.scripts.perception_utils as perception_utils
 
-
 def get_args():
-    """Gets arguments from the command line."""
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "-p",
-        "--perception_config_file_name",
+    p = argparse.ArgumentParser()
+    
+    p.add_argument(
+        "--perception_config_file_name", 
+        "-p", 
         required=True,
-        help="Perception configuration to load",
+        help="YAML config file (detect_objects section)"
     )
+    
+    return p.parse_args()
 
-    args = parser.parse_args()
-
-    return args
-
-
-def main(perception_config_file_name):
-    """Runs the detection pipeline.
-
-    Captures an image. Loads a perception model. Detects objects. Gets their real-world coordinates.
-    Saves the information to file.
+def main(perception_config_file_name: str):
     """
-    config = perception_utils.get_perception_config(
+    Returns:
+      object_coords: list of [x, y, theta] (meters, radians) in world frame
+      object_labels: list of strings (label names)
+    """
+    # 1) load config
+    cfg = perception_utils.get_perception_config(
         file_name=perception_config_file_name, module_name="detect_objects"
     )
 
-    # Capture image
-    pipeline = perception_utils.get_camera_pipeline(
-        width=config.camera.image_width, height=config.camera.image_height
-    )
-    image = perception_utils.get_image(
-        pipeline=pipeline, display_images=config.object_detection.display_images
-    )  # np.ndarray (height, width, 3)
-    image_tensor = tf.to_tensor(image).unsqueeze(0).to("cuda")  # torch.Tensor (1, 3, height, width)
+    det_cfg   = cfg.object_detection
+    scene_cfg = det_cfg.scene[det_cfg.scene.type]
+    label_names = scene_cfg.label_names  # e.g., ['background','four_hole_base','four_hole_inserter']
+    conf_thresh = float(det_cfg.confidence_thresh)
 
-    # Load perception model
-    model = torch.load(
-        os.path.join(os.path.dirname(__file__), '..', 'checkpoints', config.input.checkpoint_file_name),
-        map_location="cuda",
-    )
+    # extrinsics file produced by calibrate_fixed_extrinsics
+    ext_json = cfg.output.json_file_name if "json_file_name" in cfg.output else cfg.output.file_name
+    ext_json_path = os.path.join(os.path.dirname(__file__), "..", "io", ext_json)
 
-    # Get detections
-    if config.augmentation.augment_image:
-        # Augment image and get detections for image with highest confidence scores
-        boxes, labels, scores, masks = _get_augmented_detections(
-            config=config,
-            model=model,
-            image=image_tensor,
-            num_augmentations=config.augmentation.num_augmentations,
+    # 2) set up both cameras
+    cams = cfg.camera
+    # Expect per-camera: name, serial, image_width, image_height, ckpt_path
+    cam_entries = []
+    for key in sorted(cams.keys()):
+        cam = cams[key]
+        entry = {
+            "name": cam.name,
+            "serial": cam.serial,
+            "w": cam.image_width,
+            "h": cam.image_height,
+            "wd": cam.image_width_depth,
+            "hd": cam.image_height_depth,
+            "ckpt": cam.checkpoint_path,
+        }
+        if entry["ckpt"] is None:
+            raise ValueError(f"Config must provide ckpt_path for camera '{cam.name}'.")
+        cam_entries.append(entry)
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Load models and pipelines
+    for c in cam_entries:
+        # RealSense pipeline
+        c["pipeline"] = perception_utils.get_camera_pipeline_with_serial(
+            width=c["w"], height=c["h"], serial=c["serial"],
+            use_depth=True, width_depth=c["wd"], height_depth=c["hd"]
         )
-    else:
-        boxes, labels, scores, masks = _get_detections(
-            config=config, model=model, image=image_tensor
-        )
+        # warmup
+        for _ in range(10):
+            c["pipeline"].wait_for_frames()
 
-    # Sort detections by scores
-    combined_data = list(zip(boxes, labels, scores, masks))
-    sorted_data = sorted(combined_data, key=lambda x: x[2], reverse=True)
-    boxes, labels, scores, masks = zip(*sorted_data)
+        # intrinsics (for color stream)
+        intr = perception_utils.get_intrinsics(pipeline=c["pipeline"])
+        c["intr"] = build_intrinsics_dict(intr)
 
-    # Get real-world (x, y, theta) coordinates of detected objects
-    box_real_coords, _ = _get_real_object_coords(config=config, boxes=boxes, masks=masks)
+        # extrinsics world<-camera
+        Rc, tc = load_extrinsics(ext_json_path, c["name"])
+        c["Rcw"], c["tcw"] = Rc, tc
 
-    # Save object detection information to file
-    label_names = config.object_detection.scene[config.object_detection.scene.type].label_names
-    labels_text = [label_names[label.item()] for label in labels]
-    _save_object_detection_info(
-        config=config, object_coords=box_real_coords, labels_text=labels_text
-    )
+        # model
+        # num_classes inferred from label_names length
+        model = maskrcnn_resnet50_fpn(num_classes=len(label_names))
+        model = torch.load(c["ckpt"], weights_only=False, map_location=device)
+        model.eval().to(device)
+        c["model"] = model
 
-    # Draw labels on image and save to file
-    image_labeled = _label_object_detections(
-        image=image, boxes=boxes, labels_text=labels_text, scores=scores
-    )
-    perception_utils.save_image(image=image_labeled, file_name=config.output.image_file_name)
-
-    if config.object_detection.display_images:
-        cv2.imshow("Object Detections", image_labeled)
-        cv2.waitKey(delay=2000)
-        cv2.destroyAllWindows()
-
-    return box_real_coords, labels_text
-
-
-def _get_detections(config, model, image):
-    """Gets bounding boxes, labels, scores, and masks from an image."""
-    # Detect objects
-    print("\nRunning detection...")
-    model.eval()
-    with torch.no_grad():
-        detections = model(image)[0]
-    print("Finished running detection.")
-
-    # Extract detection data
-    boxes = detections["boxes"].detach().to("cpu").numpy()
-    labels = detections["labels"].detach().to("cpu").numpy()
-    scores = detections["scores"].detach().to("cpu").numpy()
-    masks = detections["masks"].detach().to("cpu").numpy()
-
-    # Keep only high-confidence detections
-    indices_to_keep = []
-    for i, score in enumerate(scores):
-        if score > config.object_detection.confidence_thresh:
-            indices_to_keep.append(i)
-    boxes = boxes[indices_to_keep]
-    labels = labels[indices_to_keep]
-    scores = scores[indices_to_keep]
-    masks = masks[indices_to_keep]
-
-    return boxes, labels, scores, masks
-
-
-def _get_real_object_coords(config, boxes, masks, depth_image, intrinsics, extrinsics):
-    """Gets the real-world (x, y, theta) coordinates of detected objects using depth and camera calibration."""
-
-    def pixel_to_cam_coords(u, v, depth, intrinsics):
-        """
-        Convert a 2D pixel and depth to 3D camera coordinates.
-
-        Args:
-            u, v: Pixel coordinates (float)
-            depth: Depth value at (u, v) in meters
-            intrinsics: Dictionary with 'fx', 'fy', 'cx', 'cy'
-
-        Returns:
-            np.array of shape (3,), 3D point in camera frame
-        """
-        fx, fy = intrinsics["fx"], intrinsics["fy"]
-        cx, cy = intrinsics["cx"], intrinsics["cy"]
-        x = (u - cx) * depth / fx
-        y = (v - cy) * depth / fy
-        z = depth
-        return np.array([x, y, z])
-
-    def get_angle_from_mask(mask):
-        """Get orientation angle from binary mask using min area rect."""
-        mask_processed = mask.squeeze(0) * 255.0  # (H, W)
-        contours, _ = cv2.findContours(
-            image=mask_processed.astype(np.uint8),
-            mode=cv2.RETR_EXTERNAL,
-            method=cv2.CHAIN_APPROX_SIMPLE,
-        )
-        min_area_rect = cv2.minAreaRect(points=contours[0])
-        angle = min_area_rect[2] * np.pi / 180.0  # Convert degrees to radians
-        return angle
-
-    box_real_coords = []
-
-    for box, mask in zip(boxes, masks):
-        # Get center pixel of bounding box
-        u = (box[0] + box[2]) / 2.0  # x (cols)
-        v = (box[1] + box[3]) / 2.0  # y (rows)
-
-        # Get depth in meters
-        depth_val = depth_image[int(v), int(u)]
-
-        # Skip if invalid depth
-        if depth_val <= 0.01:
+    # 3) grab frames, run inference, compute centers -> world
+    all_dets = []
+    for c in cam_entries:
+        rgb, depth_m = align_realsense_frames(c["pipeline"])
+        if rgb is None:
             continue
 
-        # 3D point in camera coordinates
-        point_cam = pixel_to_cam_coords(u, v, depth_val, intrinsics)  # shape (3,)
-        point_cam_h = np.concatenate([point_cam, [1.0]])  # to homogeneous (4,)
+        pred = run_detector(c["model"], rgb)
 
-        # Transform to world coordinates
-        point_world = extrinsics @ point_cam_h  # shape (4,)
-        x_world, y_world = point_world[0], point_world[1]
+        # per-instance extraction
+        dets = []
+        for i in range(len(pred["scores"])):
+            score = float(pred["scores"][i].cpu().item())
+            if score < conf_thresh:
+                continue
+            label_idx = int(pred["labels"][i].cpu().item())
+            if label_idx <= 0 or label_idx >= len(label_names):
+                continue
 
-        # Estimate object angle
-        angle = get_angle_from_mask(mask)
-        
+            mask_prob = pred["masks"][i, 0].detach().cpu().numpy()
+            center_cam = center_from_mask_and_depth(
+                mask_prob, depth_m, c["intr"], thresh=0.5, z_min=0.05, z_max=3.0, robust=True
+            )
+            if center_cam is None:
+                continue
 
-        # Clamp angle to range -pi/2 to pi/2 (helps with symmetric object ambiguity)
-        if angle > np.pi / 2:
-            angle -= np.pi
+            # world pose
+            p_w = to_world(center_cam, c["Rcw"], c["tcw"])
+            theta_w = orientation_theta_world(mask_prob, depth_m, c["intr"], c["Rcw"], c["tcw"], thresh=0.5)
 
-        box_real_coords.append([x_world, y_world, angle])
+            dets.append({
+                "label": label_names[label_idx],
+                "xyz_world": p_w.tolist(),
+                "theta": theta_w
+            })
 
-    return box_real_coords
+        all_dets.append(dets)
 
+    # stop pipelines
+    for c in cam_entries:
+        c["pipeline"].stop()
 
-def _get_mask_angle(mask):
-    """Processes a mask. Gets its contours. Fits a minimum-area rectangle. Gets the angle."""
-    mask_processed = mask.squeeze(0) * 255.0  # (height, width)
+    # 4) fuse detections across the two cameras (0.4 cam1 + 0.6 cam2)
+    if len(all_dets) == 2:
+        fused = fuse_two_cameras(all_dets[0], all_dets[1], w1=0.4, w2=0.6, match_radius=0.05)
+    elif len(all_dets) == 1:
+        fused = all_dets[0]
+    else:
+        fused = []
 
-    contours, _ = cv2.findContours(
-        image=mask_processed.astype(np.uint8),
-        mode=cv2.RETR_EXTERNAL,
-        method=cv2.CHAIN_APPROX_SIMPLE,
-    )  # (1, num points, 1, 2)
+    # 5) pack outputs for the task interface
+    object_coords = []  # list of [x, y, theta]
+    object_labels = []  # list of strings
+    for d in fused:
+        x, y = d["xyz_world"][0], d["xyz_world"][1]
+        theta = d["theta"]
+        object_coords.append([float(x), float(y), float(theta)])
+        object_labels.append(d["label"])
 
-    min_area_rect = cv2.minAreaRect(points=contours[0])
-    angle = min_area_rect[2] * np.pi / 180.0  # [0, pi / 2]
+    return object_coords, object_labels
 
-    return angle
-
-
-def _save_object_detection_info(config, object_coords, labels_text):
-    """Saves object detection information to a JSON file."""
-    with open(os.path.join(os.path.dirname(__file__), '..', 'io', config.output.json_file_name), "w") as f:
-        mapping = {"object_coords": object_coords, "labels_text": labels_text}
-        json.dump(mapping, f)
-    print("\nSaved object detections to file.")
-
-
-def _label_object_detections(image, boxes, labels_text, scores):
-    """Labels object detection information on an image."""
-    image_labeled = image.copy()
-
-    # For each detection, draw box, label, and score
-    for box, label_text, score in zip(boxes, labels_text, scores):
-        # Draw box on image
-        cv2.rectangle(
-            img=image_labeled,
-            pt1=(int(box[0]), int(box[1])),
-            pt2=(int(box[2]), int(box[3])),
-            color=(0, 255, 0),
-            thickness=2,
-        )
-
-        # Draw label and score on image
-        cv2.putText(
-            img=image_labeled,
-            text=f"{label_text} ({str(score)[:4]})",
-            org=(int(box[0]), int(box[1] - 10.0)),
-            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-            fontScale=0.5,
-            color=(255, 0, 0),
-            thickness=2,
-            lineType=cv2.LINE_AA,
-        )
-
-    return image_labeled
+def load_extrinsics(json_path, camera_name):
+    with open(json_path, "r") as f:
+        ext = json.load(f)
+    if camera_name not in ext:
+        raise KeyError(f"Camera '{camera_name}' not found in {json_path}")
+    t = np.array(ext[camera_name]["position"], dtype=np.float32).reshape(3, 1)
+    R = np.array(ext[camera_name]["orientation"], dtype=np.float32)  # 3x3
+    return R, t  # camera_in_world: p_w = R @ p_c + t
 
 
-def _get_augmented_detections(config, model, image, num_augmentations):
-    """Runs test-time augmentation.
+def center_from_mask_and_depth(mask_prob, depth_img_m, intr, thresh=0.5,
+                               z_min=0.05, z_max=4.0, robust=True):
+    """3D centroid in CAMERA frame from mask + full depth (meters)."""
+    m = (mask_prob > thresh)
+    if m.sum() < 20:
+        return None
 
-    Augments an image a specified number of times. Detects objects in each augmentation.
-    Keeps highest-confidence detections.
+    ys, xs = np.where(m)
+    Z = depth_img_m[ys, xs].astype(np.float32)
+    valid = np.isfinite(Z) & (Z > z_min) & (Z < z_max)
+    if valid.sum() < 20:
+        return None
+
+    xs = xs[valid].astype(np.float32)
+    ys = ys[valid].astype(np.float32)
+    Z  = Z[valid]
+
+    fx, fy, cx, cy = intr["fx"], intr["fy"], intr["cx"], intr["cy"]
+    X = (xs - cx) * Z / fx
+    Y = (ys - cy) * Z / fy
+    P = np.stack([X, Y, Z], axis=1)
+
+    if robust and P.shape[0] >= 60:
+        lo, hi = np.percentile(P, [5, 95], axis=0)
+        keep = np.all((P >= lo) & (P <= hi), axis=1)
+        if keep.any():
+            P = P[keep]
+
+    return P.mean(axis=0).astype(np.float32)
+
+
+def orientation_theta_world(mask_prob, depth_img_m, intr, Rcw, tcw, thresh=0.5):
+    """Estimate planar yaw (theta) in world XY via PCA on 3D points."""
+    m = (mask_prob > thresh)
+    ys, xs = np.where(m)
+    if xs.size < 50:
+        return 0.0
+
+    Z = depth_img_m[ys, xs].astype(np.float32)
+    valid = np.isfinite(Z) & (Z > 0.05) & (Z < 4.0)
+    if valid.sum() < 50:
+        return 0.0
+
+    xs = xs[valid].astype(np.float32)
+    ys = ys[valid].astype(np.float32)
+    Z  = Z[valid]
+
+    fx, fy, cx, cy = intr["fx"], intr["fy"], intr["cx"], intr["cy"]
+    X = (xs - cx) * Z / fx
+    Y = (ys - cy) * Z / fy
+    Pw = (Rcw @ np.stack([X, Y, Z], axis=0) + tcw).T  # Nx3 world
+    XY = Pw[:, :2] - Pw[:, :2].mean(0, keepdims=True)
+    if XY.shape[0] < 2:
+        return 0.0
+    C = XY.T @ XY / (XY.shape[0] - 1)
+    eigvals, eigvecs = np.linalg.eigh(C)
+    v = eigvecs[:, np.argmax(eigvals)]  # principal axis on XY
+    theta = np.arctan2(v[1], v[0])     # radians
+    return float(theta)
+
+
+def to_world(center_cam, Rcw, tcw):
+    """camera -> world: p_w = R * p_c + t"""
+    p = Rcw @ center_cam.reshape(3, 1) + tcw
+    return p.flatten()
+
+
+def align_realsense_frames(pipeline):
+    """Return (rgb_uint8, depth_meters) aligned to color."""
+    color, depth = perception_utils.get_image_color_depth(pipeline=pipeline, display_images=False)
+    depth_scale = pipeline.get_active_profile().get_device().first_depth_sensor().get_depth_scale()
+    depth_m = depth * depth_scale
+    return color, depth_m
+
+
+def build_intrinsics_dict(intr):
+    return {
+        "fx": intr.fx, "fy": intr.fy,
+        "cx": intr.ppx, "cy": intr.ppy
+    }
+
+
+def run_detector(model, rgb):
+    image = Image.fromarray(rgb).convert("RGB")
+    tensor = T.ToTensor()(image).unsqueeze(0).to(next(model.parameters()).device)
+    with torch.no_grad():
+        pred = model(tensor)[0]
+    return pred
+
+
+def fuse_two_cameras(dets_cam1, dets_cam2, w1=0.4, w2=0.6, match_radius=0.05):
     """
-    # Define augmentation that will apply random brightness, contrast, saturation, and hue
-    # perturbation
-    color_augmentation = ColorJiggle(
-        p=1.0, brightness=(0.5, 2.0), contrast=(0.5, 2.0), saturation=(0.5, 2.0), hue=(-0.5, 0.5)
-    )
+    dets_cam*: list of dicts: {label, xyz_world (3,), theta}
+    Weighted fuse if same label and within match_radius (meters).
+    """
+    fused = []
+    used2 = set()
 
-    print("\nAugmenting image and running detection...")
-    score_sum_best = 0.0
-    for _ in range(num_augmentations):
-        image_augmented = color_augmentation(image)
-        boxes, labels, scores, masks = _get_detections(
-            config=config, model=model, image=image_augmented
-        )
-        if scores.any():
-            score_sum = np.sum(scores)
-            if score_sum > score_sum_best:
-                score_sum_best = score_sum
-                boxes_best = boxes
-                labels_best = labels
-                scores_best = scores
-                masks_best = masks
-    print("\nFinished augmenting image and running detection.")
+    for i, d1 in enumerate(dets_cam1):
+        best_j, best_dist = None, 1e9
+        for j, d2 in enumerate(dets_cam2):
+            if j in used2 or d1["label"] != d2["label"]:
+                continue
+            dist = np.linalg.norm(np.array(d1["xyz_world"]) - np.array(d2["xyz_world"]))
+            if dist < best_dist:
+                best_dist, best_j = dist, j
 
-    return boxes_best, labels_best, scores_best, masks_best
+        if best_j is not None and best_dist <= match_radius:
+            p = w1 * np.array(d1["xyz_world"]) + w2 * np.array(dets_cam2[best_j]["xyz_world"])
+            theta = float(np.arctan2(
+                w1 * np.sin(d1["theta"]) + w2 * np.sin(dets_cam2[best_j]["theta"]),
+                w1 * np.cos(d1["theta"]) + w2 * np.cos(dets_cam2[best_j]["theta"])
+            ))
+            fused.append({"label": d1["label"], "xyz_world": p.tolist(), "theta": theta})
+            used2.add(best_j)
+        else:
+            fused.append(d1)
 
+    # add leftover from cam2
+    for j, d2 in enumerate(dets_cam2):
+        if j not in used2:
+            fused.append(d2)
+
+    return fused
 
 if __name__ == "__main__":
-    """Gets arguments. Runs the script."""
     args = get_args()
-
-    main(perception_config_file_name=args.perception_config_file_name)
+    coords, labels = main(perception_config_file_name=args.perception_config_file_name)
+    print("Object labels:", labels)
+    print("Object coords (x, y, theta):", coords)

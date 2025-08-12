@@ -77,3 +77,46 @@ detect_objects_april:
     json_file_name: object_detections.json
     image_file_name: object_detections.png
 
+detect_objects:
+  camera:
+    "0":
+      name: "camera_1"
+      serial: "f1380463"
+      image_width: 640
+      image_height: 480
+      image_width_depth: 640
+      image_height_depth: 480
+      checkpoint_path: /home/fenchel/industreallibFork/src/industreallib/perception/checkpoints/industreal_detector_four_holes_camera1.pt
+    "1":
+      name: "camera_2"
+      serial: "f1421239"
+      image_width: 1280
+      image_height: 720
+      image_width_depth: 640
+      image_height_depth: 480
+      checkpoint_path: /home/fenchel/industreallibFork/src/industreallib/perception/checkpoints/industreal_detector_four_holes_camera2.pt
+  object_detection:
+    tag:
+      type: tagStandard52h13
+      length: 6.0  # [inches]
+      active_pixel_ratio: 0.6
+      tag_ids:
+        "4":
+          label: 'four_hole_base'
+          offset: [0.0, 0.039, -0.005]
+        "5":
+          label: 'four_hole_inserter'
+          offset: [0.0, 0.0, -0.005]
+    scene:
+      type: four_hole_3_classes
+      four_hole_3_classes:
+        label_names: ['background', 'four_hole_base', 'four_hole_inserter']
+    confidence_thresh: 0.9
+    display_images: True
+  augmentation:
+    augment_image: True
+    num_augmentations: 16
+  output:
+    json_file_name: object_detections.json
+    image_file_name: object_detections.png
+
