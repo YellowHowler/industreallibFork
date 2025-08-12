@@ -8,7 +8,7 @@ import numpy as np
 import os
 
 # Config 
-IMG_PATH = "/home/fenchel/industreallibFork/collected_data/camera_1/rgb_0000.png"
+IMG_PATH = "/home/fenchel/industreallibFork/perception_training/camera2/train/camera2_rgb_0009.png"
 CKPT_PATH = "/home/fenchel/industreallibFork/src/industreallib/perception/scripts/training/checkpoint.pt"
 NUM_CLASSES = 3 
 
