@@ -161,7 +161,6 @@ def load_extrinsics(json_path, camera_name):
     R = np.array(ext[camera_name]["orientation"], dtype=np.float32)  # 3x3
     return R, t  # camera_in_world: p_w = R @ p_c + t
 
-
 def center_from_mask_and_depth(mask_prob, depth_img_m, intr, thresh=0.5,
                                z_min=0.05, z_max=4.0, robust=True):
     """3D centroid in CAMERA frame from mask + full depth (meters)."""
@@ -222,12 +221,10 @@ def orientation_theta_world(mask_prob, depth_img_m, intr, Rcw, tcw, thresh=0.5):
     theta = np.arctan2(v[1], v[0])     # radians
     return float(theta)
 
-
 def to_world(center_cam, Rcw, tcw):
     """camera -> world: p_w = R * p_c + t"""
     p = Rcw @ center_cam.reshape(3, 1) + tcw
     return p.flatten()
-
 
 def align_realsense_frames(pipeline):
     """Return (rgb_uint8, depth_meters) aligned to color."""
@@ -236,13 +233,11 @@ def align_realsense_frames(pipeline):
     depth_m = depth * depth_scale
     return color, depth_m
 
-
 def build_intrinsics_dict(intr):
     return {
         "fx": intr.fx, "fy": intr.fy,
         "cx": intr.ppx, "cy": intr.ppy
     }
-
 
 def run_detector(model, rgb):
     image = Image.fromarray(rgb).convert("RGB")
@@ -250,7 +245,6 @@ def run_detector(model, rgb):
     with torch.no_grad():
         pred = model(tensor)[0]
     return pred
-
 
 def fuse_two_cameras(dets_cam1, dets_cam2, w1=0.4, w2=0.6, match_radius=0.05):
     """
