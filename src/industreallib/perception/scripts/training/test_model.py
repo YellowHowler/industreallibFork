@@ -8,7 +8,7 @@ import numpy as np
 import os
 
 # Config 
-IMG_PATH = "/home/fenchel/industreallibFork/collected_data/camera_1/rgb_0000.png"
+IMG_PATH = "/home/fenchel/industreallibFork/perception_training/camera2/train/camera2_rgb_0009.png"
 CKPT_PATH = "/home/fenchel/industreallibFork/src/industreallib/perception/scripts/training/checkpoint.pt"
 NUM_CLASSES = 3 
 
@@ -58,11 +58,13 @@ for i in range(len(prediction["masks"])):
         # Generate a random color
         color = np.random.rand(3)
 
+        alpha = 0.8
+        
         # Apply color to mask
         for c in range(3):
             blended[:, :, c] = np.where(
                 mask_bin == 1,
-                blended[:, :, c] * 0.5 + color[c] * 0.5,
+                blended[:, :, c] * (1 - alpha) + color[c] * alpha,
                 blended[:, :, c]
             )
 
