@@ -137,7 +137,7 @@ def get_image(pipeline, display_images):
     return color_image
 
 
-def label_tag_detection(image, tag_corner_pixels, tag_family):
+def label_tag_detection(image, tag_corner_pixels, tag_family, tag_id=None):
     """Labels a tag detection on an image."""
     image_labeled = image.copy()
 
@@ -151,18 +151,30 @@ def label_tag_detection(image, tag_corner_pixels, tag_family):
     cv2.line(img=image_labeled, pt1=corner_b, pt2=corner_c, color=(0, 255, 0), thickness=2)
     cv2.line(img=image_labeled, pt1=corner_c, pt2=corner_d, color=(0, 255, 0), thickness=2)
     cv2.line(img=image_labeled, pt1=corner_d, pt2=corner_a, color=(0, 255, 0), thickness=2)
-
+    
     # Draw tag family on image
-    cv2.putText(
-        img=image_labeled,
-        text=tag_family.decode("utf-8"),
-        org=(corner_a[0], corner_c[1] - 10),
-        fontFace=cv2.FONT_HERSHEY_SIMPLEX,
-        fontScale=0.5,
-        color=(255, 0, 0),
-        thickness=2,
-        lineType=cv2.LINE_AA,
-    )
+    if tag_id is not None:
+        cv2.putText(
+            img=image_labeled,
+            text=str(tag_id),
+            org=(corner_a[0], corner_c[1] - 10),
+            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+            fontScale=0.5,
+            color=(255, 0, 0),
+            thickness=2,
+            lineType=cv2.LINE_AA,
+        )
+    else:
+        cv2.putText(
+            img=image_labeled,
+            text=tag_family.decode("utf-8"),
+            org=(corner_a[0], corner_c[1] - 10),
+            fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+            fontScale=0.5,
+            color=(255, 0, 0),
+            thickness=2,
+            lineType=cv2.LINE_AA,
+        )
 
     return image_labeled
 

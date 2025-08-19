@@ -63,6 +63,7 @@ if __name__ == "__main__":
     elif args.action == "open_gripper":
         control_utils.open_gripper(franka_arm=franka_arm)
     elif args.action == "close_gripper":
+        print("hi")
         control_utils.close_gripper(franka_arm=franka_arm)
     elif args.action == "go_home":
         control_utils.go_home(franka_arm=franka_arm, duration=5.0)
